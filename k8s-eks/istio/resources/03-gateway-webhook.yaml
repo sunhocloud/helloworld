@@ -1,0 +1,31 @@
+# Webhook Gateway (외부 시스템용 - PG사, 파트너사)
+# IP Whitelist 기반 접근 제어
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: webhook-gateway
+  namespace: ecommerce
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    # NLB 설정 (Istio가 생성하는 Service에 적용됨)
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
+    service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "ip"
+spec:
+  gatewayClassName: istio
+  listeners:
+    - name: https-webhook
+      hostname: "webhook.ecommerce.com"
+      port: 443
+      protocol: HTTPS
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: webhook-tls-cert
+            kind: Secret
+            namespace: ecommerce
+      allowedRoutes:
+        namespaces:
+          from: Same
+
+

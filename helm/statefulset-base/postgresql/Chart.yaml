@@ -1,0 +1,11 @@
+apiVersion: v2
+name: postgresql
+description: PostgreSQL with Primary-Replica replication
+type: application
+version: 1.0.0
+appVersion: "17"
+
+dependencies:
+  - name: postgresql
+    version: "18.1.8"
+    repository: https://charts.bitnami.com/bitnami

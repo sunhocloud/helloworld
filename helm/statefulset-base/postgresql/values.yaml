@@ -1,0 +1,36 @@
+postgresql:
+  auth:
+    username: application
+    password: application
+    database: groom
+    replicationUsername: repl_user
+    replicationPassword: repl_password
+
+  architecture: replication
+
+  primary:
+    persistence:
+      enabled: true
+      size: 10Gi
+      storageClassName: gp2
+    resources:
+      requests:
+        memory: 256Mi
+        cpu: 250m
+      limits:
+        memory: 512Mi
+        cpu: 500m
+
+  readReplicas:
+    replicaCount: 1
+    persistence:
+      enabled: true
+      size: 10Gi
+      storageClassName: gp2
+    resources:
+      requests:
+        memory: 256Mi
+        cpu: 250m
+      limits:
+        memory: 512Mi
+        cpu: 500m

@@ -1,0 +1,104 @@
+# VirtualService: 재시도 및 타임아웃 정책
+# 각 서비스별 재시도 및 타임아웃 설정
+
+---
+# Order Service VirtualService
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: order-service-vs
+  namespace: ecommerce
+spec:
+  hosts:
+    - order-service.ecommerce.svc.cluster.local
+  http:
+    - match:
+        - uri:
+            prefix: /
+      route:
+        - destination:
+            host: order-service.ecommerce.svc.cluster.local
+            port:
+              number: 8080
+      retries:
+        attempts: 3
+        perTryTimeout: 5s
+        retryOn: 5xx,reset,connect-failure,refused-stream
+      timeout: 5s
+
+---
+# Product Service VirtualService
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: product-service-vs
+  namespace: ecommerce
+spec:
+  hosts:
+    - product-service.ecommerce.svc.cluster.local
+  http:
+    - match:
+        - uri:
+            prefix: /
+      route:
+        - destination:
+            host: product-service.ecommerce.svc.cluster.local
+            port:
+              number: 8080
+      retries:
+        attempts: 3
+        perTryTimeout: 5s
+        retryOn: 5xx,reset,connect-failure,refused-stream
+      timeout: 5s
+
+---
+# Payment Service VirtualService (더 엄격한 타임아웃)
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: payment-service-vs
+  namespace: ecommerce
+spec:
+  hosts:
+    - payment-service.ecommerce.svc.cluster.local
+  http:
+    - match:
+        - uri:
+            prefix: /
+      route:
+        - destination:
+            host: payment-service.ecommerce.svc.cluster.local
+            port:
+              number: 8080
+      retries:
+        attempts: 2  # 결제 서비스는 재시도 횟수 제한
+        perTryTimeout: 3s
+        retryOn: 5xx,reset,connect-failure
+      timeout: 10s
+
+---
+# Recommendation Service VirtualService (캐시 히트 목표)
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: recommendation-service-vs
+  namespace: ecommerce
+spec:
+  hosts:
+    - recommendation-service.ecommerce.svc.cluster.local
+  http:
+    - match:
+        - uri:
+            prefix: /
+      route:
+        - destination:
+            host: recommendation-service.ecommerce.svc.cluster.local
+            port:
+              number: 8080
+      retries:
+        attempts: 2
+        perTryTimeout: 2s
+        retryOn: 5xx,reset,connect-failure
+      timeout: 3s  # 빠른 응답 목표
+
+

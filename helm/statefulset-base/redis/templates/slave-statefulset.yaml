@@ -1,0 +1,154 @@
+{{- if .Values.slave.enabled }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "redis-chart.fullname" . }}-slave
+  namespace: {{ include "redis-chart.namespace" . }}
+  labels:
+    {{- include "redis-chart.slaveLabels" . | nindent 4 }}
+spec:
+  serviceName: {{ include "redis-chart.slaveServiceName" . }}
+  replicas: {{ .Values.slave.replicas }}
+  selector:
+    matchLabels:
+      app: {{ .Values.global.appName }}
+      component: slave
+      {{- include "redis-chart.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "redis-chart.slaveLabels" . | nindent 8 }}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "{{ .Values.config.port }}"
+        prometheus.io/path: "/metrics"
+    spec:
+      securityContext:
+        fsGroup: {{ .Values.securityContext.fsGroup }}
+        runAsUser: {{ .Values.securityContext.runAsUser }}
+        runAsGroup: {{ .Values.securityContext.runAsGroup }}
+      containers:
+      - name: redis-slave
+        image: "{{ .Values.slave.image.repository }}:{{ .Values.slave.image.tag }}"
+        imagePullPolicy: {{ .Values.slave.image.pullPolicy }}
+        command:
+        - /bin/sh
+        - /scripts/init-slave.sh
+        ports:
+        - name: redis
+          containerPort: {{ .Values.config.port }}
+          protocol: TCP
+        env:
+        {{- if .Values.auth.enabled }}
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "redis-chart.secretName" . }}
+              key: redis-password
+        {{- end }}
+        - name: REDIS_ROLE
+          value: "slave"
+        - name: REDIS_MASTER_HOST
+          value: {{ include "redis-chart.masterFQDN" . }}
+        - name: REDIS_MASTER_PORT
+          value: "{{ .Values.config.port }}"
+        resources:
+          {{- toYaml .Values.slave.resources | nindent 10 }}
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - /scripts/health-check.sh
+          {{- toYaml .Values.healthCheck.liveness | nindent 10 }}
+        readinessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - /scripts/health-check.sh
+          {{- toYaml .Values.healthCheck.slaveReadiness | nindent 10 }}
+        volumeMounts:
+        - name: redis-data
+          mountPath: /data
+        - name: redis-config
+          mountPath: /config
+          readOnly: true
+        - name: redis-scripts
+          mountPath: /scripts
+      volumes:
+      - name: redis-data
+        {{- if .Values.slave.storage.useEmptyDir }}
+        emptyDir:
+          sizeLimit: {{ .Values.slave.storage.emptyDirSizeLimit }}
+        {{- else }}
+        persistentVolumeClaim:
+          claimName: {{ include "redis-chart.fullname" . }}-slave-data
+        {{- end }}
+      - name: redis-config
+        configMap:
+          name: {{ include "redis-chart.configMapName" . }}
+          defaultMode: 0644
+      - name: redis-scripts
+        configMap:
+          name: {{ include "redis-chart.scriptsConfigMapName" . }}
+          defaultMode: 0755
+      restartPolicy: Always
+      {{- if .Values.slave.nodeSelector }}
+      nodeSelector:
+        {{- toYaml .Values.slave.nodeSelector | nindent 8 }}
+      {{- end }}
+      {{- if .Values.slave.podAntiAffinity.enabled }}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: {{ .Values.slave.podAntiAffinity.weight }}
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - {{ .Values.global.appName }}
+                - key: component
+                  operator: In
+                  values:
+                  - slave
+              topologyKey: kubernetes.io/hostname
+          # Master와 다른 노드에 배치 선호
+          - weight: 50
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - {{ .Values.global.appName }}
+                - key: component
+                  operator: In
+                  values:
+                  - master
+              topologyKey: kubernetes.io/hostname
+      {{- end }}
+  {{- if not .Values.slave.storage.useEmptyDir }}
+  volumeClaimTemplates:
+  - metadata:
+      name: redis-data
+      labels:
+        {{- include "redis-chart.selectorLabels" . | nindent 8 }}
+        app: {{ .Values.global.appName }}
+        component: slave
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      storageClassName: {{ .Values.slave.storage.storageClassName }}
+      resources:
+        requests:
+          storage: {{ .Values.slave.storage.size }}
+  {{- end }}
+  updateStrategy:
+    type: {{ .Values.updateStrategy.type }}
+    {{- if .Values.updateStrategy.rollingUpdate }}
+    rollingUpdate:
+      {{- toYaml .Values.updateStrategy.rollingUpdate | nindent 6 }}
+    {{- end }}
+{{- end }}
+

@@ -1,0 +1,17 @@
+apiVersion: v2
+name: redis-base
+description: Redis Master-Slave Library Chart for reusable infrastructure templates
+type: application
+version: 1.0.0
+appVersion: "7-alpine"
+keywords:
+  - redis
+  - cache
+  - database
+  - master-slave
+  - library
+maintainers:
+  - name: Infrastructure Team
+home: https://redis.io
+sources:
+  - https://github.com/redis/redis

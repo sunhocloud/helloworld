@@ -1,0 +1,20 @@
+apiVersion: v2
+name: airflow-base
+description: Apache Airflow용 공통 Helm Chart 래퍼
+type: application
+version: 0.1.0
+appVersion: "2.9.0"
+keywords:
+  - airflow
+  - etl
+  - workflow
+maintainers:
+  - name: Infrastructure Team
+home: https://airflow.apache.org/
+sources:
+  - https://github.com/apache/airflow
+dependencies:
+  - name: airflow
+    alias: airflow
+    version: 1.13.0
+    repository: "https://airflow.apache.org"

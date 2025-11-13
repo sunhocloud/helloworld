@@ -1,0 +1,87 @@
+# EnvoyFilter: Token Blacklist 체크
+# Redis에서 로그아웃된 JWT Token 확인
+# 
+# Note: 실제 구현은 Lua 스크립트 또는 External Authorization Service를 사용해야 합니다.
+# 이 파일은 참고용 구조만 제공합니다.
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: redis-token-blacklist
+  namespace: ecommerce
+spec:
+  workloadSelector:
+    labels:
+      istio.io/gateway-name: ecommerce-gateway
+  configPatches:
+    # Lua Filter를 통한 Token Blacklist 체크
+    # 실제 구현은 External Authorization Service (ExtAuthz) 사용 권장
+    - applyTo: HTTP_FILTER
+      match:
+        context: GATEWAY
+        listener:
+          filterChain:
+            filter:
+              name: "envoy.filters.network.http_connection_manager"
+              subFilter:
+                name: "envoy.filters.http.jwt_authn"
+      patch:
+        operation: INSERT_AFTER
+        value:
+          name: envoy.filters.http.lua
+          typed_config:
+            "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
+            inline_code: |
+              function envoy_on_request(request_handle)
+                local auth_header = request_handle:headers():get("authorization")
+                if auth_header then
+                  local token = string.gsub(auth_header, "Bearer ", "")
+                  -- JWT에서 jti (Token ID) 추출
+                  -- 실제 구현에서는 JWT 파싱 라이브러리 사용 필요
+                  -- 여기서는 예시로만 제공
+                  
+                  -- Redis 연결 및 확인
+                  -- 실제 구현은 External Authorization Service 사용 권장
+                  -- 또는 Envoy External Auth Filter 사용
+                end
+              end
+
+---
+# External Authorization Service 사용 권장
+# ExtAuthz Filter를 통한 Token Blacklist 체크
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: ext-authz-token-blacklist
+  namespace: ecommerce
+spec:
+  workloadSelector:
+    labels:
+      istio.io/gateway-name: ecommerce-gateway
+  configPatches:
+    - applyTo: HTTP_FILTER
+      match:
+        context: GATEWAY
+        listener:
+          filterChain:
+            filter:
+              name: "envoy.filters.network.http_connection_manager"
+              subFilter:
+                name: "envoy.filters.http.jwt_authn"
+      patch:
+        operation: INSERT_AFTER
+        value:
+          name: envoy.filters.http.ext_authz
+          typed_config:
+            "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthz
+            transport_api_version: V3
+            with_request_body:
+              max_request_bytes: 8192
+              allow_partial_message: true
+            failure_mode_allow: false
+            grpc_service:
+              google_grpc:
+                target_uri: token-blacklist-service.ecommerce.svc.cluster.local:50051
+                stat_prefix: ext_authz
+              timeout: 0.5s
+
+

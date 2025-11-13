@@ -1,0 +1,57 @@
+# Main Istio Gateway (고객용 API Gateway)
+# Kubernetes Gateway API 사용
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: ecommerce-gateway
+  namespace: ecommerce
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  gatewayClassName: istio
+  listeners:
+    # HTTPS 리스너 (메인 API)
+    - name: https
+      hostname: "api.ecommerce.com"
+      port: 443
+      protocol: HTTPS
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: ecommerce-tls-cert
+            kind: Secret
+            namespace: ecommerce
+      allowedRoutes:
+        namespaces:
+          from: Same
+    
+    # HTTP 리스너 (HTTPS 리다이렉트용)
+    - name: http-redirect
+      hostname: "api.ecommerce.com"
+      port: 80
+      protocol: HTTP
+      allowedRoutes:
+        namespaces:
+          from: Same
+
+---
+# HTTP to HTTPS 리다이렉트
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: http-redirect
+  namespace: ecommerce
+spec:
+  parentRefs:
+    - name: ecommerce-gateway
+      sectionName: http-redirect
+  hostnames:
+    - "api.ecommerce.com"
+  rules:
+    - filters:
+        - type: RequestRedirect
+          requestRedirect:
+            scheme: https
+            statusCode: 301
+
+

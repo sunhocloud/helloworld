@@ -1,0 +1,22 @@
+# RequestAuthentication: JWT 인증 설정
+apiVersion: security.istio.io/v1
+kind: RequestAuthentication
+metadata:
+  name: jwt-auth
+  namespace: ecommerce
+spec:
+  selector:
+    matchLabels:
+      istio.io/gateway-name: ecommerce-gateway
+  jwtRules:
+    - issuer: "https://api.ecommerce.com"
+      jwksUri: "https://api.ecommerce.com/.well-known/jwks.json"
+      audiences:
+        - "ecommerce-api"
+      outputClaimToHeaders:
+        - header: "X-User-Id"
+          claim: "sub"
+        - header: "X-User-Roles"
+          claim: "roles"
+
+

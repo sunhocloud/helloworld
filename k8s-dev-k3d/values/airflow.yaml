@@ -1,0 +1,104 @@
+# Airflow for k3d local environment
+# helm/management-base/airflow 차트를 사용
+
+airflow:
+  workers:
+    replicas: 0
+  executor: LocalExecutor
+
+  waitForMigrations:
+    enabled: true
+    timeout: 600
+
+  migrateDatabaseJob:
+    enabled: true
+
+  createUserJob:
+    enabled: true
+
+  defaultAirflowRepository: apache/airflow
+  defaultAirflowTag: "2.9.0"
+
+  serviceAccount:
+    create: true
+    name: ""
+
+  postgresql:
+    image:
+      registry: docker.io
+      repository: bitnami/postgresql
+      tag: latest
+    enabled: true
+    auth:
+      username: airflow
+      password: airflow
+      database: airflow
+    persistence:
+      enabled: true
+      storageClassName: local-path
+      size: 10Gi
+    primary:
+      resources:
+        requests:
+          memory: "256Mi"
+          cpu: "250m"
+        limits:
+          memory: "512Mi"
+          cpu: "500m"
+
+  redis:
+    enabled: false
+
+  dags:
+    persistence:
+      enabled: false
+    gitSync:
+      enabled: false
+
+  logs:
+    persistence:
+      enabled: false
+
+  webserver:
+    service:
+      type: NodePort
+      ports:
+        - name: airflow-ui
+          port: 8080
+          targetPort: 8080
+          nodePort: 30808
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "250m"
+      limits:
+        memory: "512Mi"
+        cpu: "500m"
+    startupProbe:
+      initialDelaySeconds: 0
+      timeoutSeconds: 20
+      failureThreshold: 18
+      periodSeconds: 10
+
+  scheduler:
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "250m"
+      limits:
+        memory: "512Mi"
+        cpu: "500m"
+
+  flower:
+    enabled: false
+
+  triggerer:
+    enabled: false
+
+  env:
+    - name: AIRFLOW__CORE__EXECUTOR
+      value: "LocalExecutor"
+    - name: AIRFLOW__CORE__LOAD_EXAMPLES
+      value: "False"
+    - name: AIRFLOW__WEBSERVER__EXPOSE_CONFIG
+      value: "True"

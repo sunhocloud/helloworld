@@ -1,0 +1,22 @@
+postgresql:
+  auth:
+    username: test
+    password: test
+    database: groom
+
+  primary:
+    persistence:
+      enabled: false  # 테스트용이므로 영속성 비활성화
+    resources:
+      requests:
+        memory: 128Mi
+        cpu: 100m
+
+redis:
+  master:
+    persistence:
+      enabled: false
+    resources:
+      requests:
+        memory: 64Mi
+        cpu: 50m

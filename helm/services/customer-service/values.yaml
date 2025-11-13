@@ -1,0 +1,75 @@
+fullnameOverride: customer-api
+
+replicaCount: 2
+
+image:
+  repository: 963403601423.dkr.ecr.ap-northeast-2.amazonaws.com/c4ang-customer-service
+  pullPolicy: IfNotPresent
+  tag: "v0.0.1-RC1"
+
+imagePullSecrets: []
+
+service:
+  type: ClusterIP
+  port: 8080
+  targetPort: 8080
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+  hosts:
+    - host: api.c4ang.com
+      paths:
+        - path: /api/v1/customers
+          pathType: Prefix
+  tls:
+    - secretName: customer-service-tls
+      hosts:
+        - api.c4ang.com
+
+resources:
+  requests:
+    memory: 512Mi
+    cpu: 250m
+  limits:
+    memory: 1Gi
+    cpu: 500m
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+env:
+  - name: SPRING_PROFILES_ACTIVE
+    value: "prod"
+  - name: SPRING_DATASOURCE_PRIMARY_URL
+    value: "jdbc:postgresql://c4-app-db.cfkm648uqlug.ap-northeast-2.rds.amazonaws.com:5432/customer_db"
+  - name: SPRING_DATASOURCE_REPLICA_URL
+    value: "jdbc:postgresql://c4-app-db.cfkm648uqlug.ap-northeast-2.rds.amazonaws.com:5432/customer_db"
+  - name: SPRING_DATASOURCE_USERNAME
+    valueFrom:
+      secretKeyRef:
+        name: customer-service-db-secret
+        key: username
+  - name: SPRING_DATASOURCE_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: customer-service-db-secret
+        key: password
+  - name: SPRING_DATA_REDIS_HOST
+    value: "redis-master"
+  - name: SPRING_DATA_REDIS_PORT
+    value: "6379"
+
+postgresql:
+  enabled: true
+  auth:
+    database: customer_db
+
+redis:
+  enabled: true

@@ -1,0 +1,186 @@
+# Default values for redis-base Library Chart
+# 이 파일은 안전한 기본값만 포함합니다.
+# 환경별 설정은 k8s-deployments 레포의 values.yaml에서 오버라이드합니다.
+
+# Global settings
+global:
+  namespace: cache-tier
+  appName: redis
+  partOf: review-analysis-system
+
+# Redis Master configuration
+master:
+  enabled: true
+  replicas: 1
+  image:
+    repository: redis
+    tag: 7-alpine
+    pullPolicy: IfNotPresent
+  
+  # 기본 리소스 (환경별로 오버라이드)
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "250m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+  
+  # 스토리지 설정은 배포 레포에서 오버라이드
+  storage:
+    useEmptyDir: true
+    emptyDirSizeLimit: 10Gi
+  
+  # 노드 선택은 배포 레포에서 오버라이드
+  nodeSelector: {}
+  
+  podAntiAffinity:
+    enabled: true
+    weight: 100
+
+# Redis Slave configuration
+slave:
+  enabled: true
+  replicas: 2
+  image:
+    repository: redis
+    tag: 7-alpine
+    pullPolicy: IfNotPresent
+  
+  # 기본 리소스 (환경별로 오버라이드)
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "250m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+  
+  # 스토리지 설정은 배포 레포에서 오버라이드
+  storage:
+    useEmptyDir: true
+    emptyDirSizeLimit: 5Gi
+  
+  # 노드 선택은 배포 레포에서 오버라이드
+  nodeSelector: {}
+  
+  podAntiAffinity:
+    enabled: true
+    weight: 100
+
+# Redis configuration (공통 설정)
+config:
+  maxmemory: "512mb"
+  maxmemoryPolicy: "allkeys-lru"
+  appendonly: "yes"
+  appendfsync: "everysec"
+  autoAofRewritePercentage: 100
+  autoAofRewriteMinSize: "64mb"
+  save:
+    - "900 1"
+    - "300 10"
+    - "60 10000"
+  bind: "0.0.0.0"
+  port: 6379
+  protectedMode: "no"
+  tcpKeepalive: 300
+  timeout: 0
+  loglevel: "notice"
+
+# Authentication
+auth:
+  enabled: true
+  password: ""  # 배포 레포에서 설정
+  existingSecret: ""  # 외부 Secret 사용 시
+
+# Services
+services:
+  master:
+    enabled: true
+    type: ClusterIP
+    headless: true
+    port: 6379
+  slave:
+    enabled: true
+    type: ClusterIP
+    headless: true
+    port: 6379
+  unified:
+    enabled: true
+    type: ClusterIP
+    port: 6379
+    selector: master
+    sessionAffinity: ClientIP
+  readonly:
+    enabled: true
+    type: ClusterIP
+    port: 6379
+    selector: slave
+    sessionAffinity: None
+
+# Monitoring
+monitoring:
+  enabled: true
+  exporter:
+    enabled: true
+    image:
+      repository: oliver006/redis_exporter
+      tag: latest
+      pullPolicy: IfNotPresent
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "50m"
+      limits:
+        memory: "128Mi"
+        cpu: "100m"
+    port: 9121
+  serviceMonitor:
+    enabled: true
+    interval: 30s
+    scrapeTimeout: 10s
+  healthCheck:
+    enabled: true
+    schedule: "*/5 * * * *"
+  backup:
+    enabled: true
+    schedule: "0 2 * * *"
+    pvc:
+      enabled: true
+      storageClassName: gp3
+      size: 20Gi
+
+# Security context
+securityContext:
+  fsGroup: 999
+  runAsUser: 999
+  runAsGroup: 999
+  fsGroupChangePolicy: "OnRootMismatch"
+
+# Health checks
+healthCheck:
+  liveness:
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+    successThreshold: 1
+  readiness:
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+    successThreshold: 1
+  slaveReadiness:
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+    successThreshold: 1
+
+# Update strategy
+updateStrategy:
+  type: RollingUpdate
+  rollingUpdate:
+    partition: 0
+

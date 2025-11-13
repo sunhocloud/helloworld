@@ -1,0 +1,69 @@
+# PostgreSQL for k3d local environment
+# bitnami/postgresql 차트를 사용하며, k3d 환경에 최적화된 설정
+
+# Global settings
+global:
+  storageClass: local-path
+
+# Architecture: replication 모드로 설정
+architecture: replication
+
+# Authentication
+auth:
+  username: application
+  password: application
+  postgresPassword: postgres
+  database: groom
+  replicationUsername: repl_user
+  replicationPassword: repl_password
+
+# Primary configuration
+primary:
+  persistence:
+    enabled: true
+    storageClass: local-path
+    size: 20Gi
+  podSecurityContext:
+    fsGroup: 1000
+  containerSecurityContext:
+    runAsUser: 1000
+  # k3d 환경에 맞게 리소스 축소
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "250m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+# Read Replicas configuration
+readReplicas:
+  replicaCount: 1
+  persistence:
+    enabled: true
+    storageClass: local-path
+    size: 20Gi
+  podSecurityContext:
+    fsGroup: 1000
+  containerSecurityContext:
+    runAsUser: 1000
+  # k3d 환경에 맞게 리소스 축소
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "250m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+# Service configuration
+service:
+  type: ClusterIP
+
+# Metrics (k3d 환경에서는 비활성화)
+metrics:
+  enabled: false
+
+# Volume permissions (k3d 환경에서는 비활성화)
+volumePermissions:
+  enabled: false

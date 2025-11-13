@@ -1,0 +1,164 @@
+# Airflow for EKS environment
+# NetApp 문서 기반 설정
+# helm/management-base/airflow 차트를 사용
+
+airflow:
+  # Executor: CeleryExecutor 사용 (NetApp 문서 권장)
+  executor: CeleryExecutor
+
+  # Airflow 이미지 설정
+  defaultAirflowRepository: apache/airflow
+  defaultAirflowTag: "2.9.0"
+  defaultAirflowImagePullPolicy: IfNotPresent
+
+  # 초기화 작업 설정
+  waitForMigrations:
+    enabled: true
+    timeout: 600
+
+  migrateDatabaseJob:
+    enabled: true
+
+  # ServiceAccount 설정
+  serviceAccount:
+    create: true
+    name: ""
+
+  # PostgreSQL 설정
+  postgresql:
+    enabled: true
+    auth:
+      username: airflow
+      password: airflow
+      database: airflow
+    persistence:
+      enabled: true
+      size: 20Gi
+      # EKS 기본 StorageClass 사용 (또는 gp2, gp3 등)
+      # storageClassName을 지정하지 않으면 기본 StorageClass 사용
+    primary:
+      resources:
+        requests:
+          memory: "512Mi"
+          cpu: "500m"
+        limits:
+          memory: "1Gi"
+          cpu: "1000m"
+
+  # Redis 설정 (CeleryExecutor에 필요)
+  redis:
+    enabled: true
+    persistence:
+      enabled: true
+      size: 8Gi
+      # EKS 기본 StorageClass 사용
+
+  # DAGs 설정
+  dags:
+    persistence:
+      enabled: true
+      size: 5Gi
+      # EKS 기본 StorageClass 사용
+    gitSync:
+      enabled: false
+      # Git sync가 필요한 경우 아래 주석 해제 및 설정
+      # repo: "git@github.com:your-org/airflow-dags.git"
+      # branch: master
+      # revision: HEAD
+      # sshSecret: "airflow-ssh-git-secret"
+      # sshSecretKey: id_rsa
+      # syncWait: 60
+
+  # 로그 설정
+  # 참고: EBS CSI 드라이버 호환성 문제로 인해 일시적으로 비활성화
+  # 필요시 EmptyDir 또는 다른 StorageClass 사용 고려
+  logs:
+    persistence:
+      enabled: false
+
+  # Web Server 설정
+  webserver:
+    replicas: 1
+    service:
+      # NetApp 문서 권장: NodePort 타입
+      type: NodePort
+      ports:
+        - name: airflow-ui
+          port: 8080
+          targetPort: 8080
+          # nodePort는 지정하지 않으면 자동 할당
+    resources:
+      requests:
+        memory: "512Mi"
+        cpu: "500m"
+      limits:
+        memory: "1Gi"
+        cpu: "1000m"
+
+  # Scheduler 설정
+  scheduler:
+    replicas: 1
+    resources:
+      requests:
+        memory: "512Mi"
+        cpu: "500m"
+      limits:
+        memory: "1Gi"
+        cpu: "1000m"
+
+  # Worker 설정 (CeleryExecutor에 필요)
+  workers:
+    replicas: 2
+    resources:
+      requests:
+        memory: "1Gi"
+        cpu: "500m"
+      limits:
+        memory: "2Gi"
+        cpu: "1000m"
+
+  # Flower 설정 (Celery 모니터링 도구, 선택사항)
+  flower:
+    enabled: true
+    service:
+      type: ClusterIP
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "250m"
+      limits:
+        memory: "512Mi"
+        cpu: "500m"
+
+  # Triggerer 설정 (Airflow 2.2+)
+  triggerer:
+    enabled: false
+
+  # 환경 변수 설정
+  env:
+    - name: AIRFLOW__CORE__EXECUTOR
+      value: "CeleryExecutor"
+    - name: AIRFLOW__CORE__LOAD_EXAMPLES
+      value: "false"
+    - name: AIRFLOW__WEBSERVER__EXPOSE_CONFIG
+      value: "true"
+    - name: AIRFLOW__CORE__PARALLELISM
+      value: "32"
+    - name: AIRFLOW__CORE__DAG_CONCURRENCY
+      value: "16"
+    - name: AIRFLOW__CORE__MAX_ACTIVE_TASKS_PER_DAG
+      value: "16"
+    - name: AIRFLOW__LOGGING__LOGGING_LEVEL
+      value: "INFO"
+    - name: AIRFLOW__API__AUTH_BACKENDS
+      value: "airflow.api.auth.backend.basic_auth"
+
+  # Ingress 설정 (선택사항)
+  ingress:
+    enabled: false
+    # ALB Ingress Controller를 사용하는 경우 아래 주석 해제
+    # className: alb
+    # annotations:
+    #   alb.ingress.kubernetes.io/scheme: internet-facing
+    #   alb.ingress.kubernetes.io/target-type: ip
+

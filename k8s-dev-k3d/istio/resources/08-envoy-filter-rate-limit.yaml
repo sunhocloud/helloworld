@@ -1,0 +1,102 @@
+# EnvoyFilter: Rate Limiting 설정
+# Redis 기반 Rate Limiting
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: rate-limit-filter
+  namespace: ecommerce
+spec:
+  workloadSelector:
+    labels:
+      istio: ingressgateway
+  configPatches:
+    # Rate Limit Service 설정
+    - applyTo: CLUSTER
+      match:
+        context: GATEWAY
+      patch:
+        operation: ADD
+        value:
+          name: rate_limit_cluster
+          connect_timeout: 0.25s
+          type: STRICT_DNS
+          lb_policy: ROUND_ROBIN
+          load_assignment:
+            cluster_name: rate_limit_cluster
+            endpoints:
+              - lb_endpoints:
+                  - endpoint:
+                      address:
+                        socket_address:
+                          address: redis.ecommerce.svc.cluster.local
+                          port_value: 6379
+    
+    # HTTP Filter 적용
+    - applyTo: HTTP_FILTER
+      match:
+        context: GATEWAY
+        listener:
+          filterChain:
+            filter:
+              name: "envoy.filters.network.http_connection_manager"
+              subFilter:
+                name: "envoy.filters.http.router"
+      patch:
+        operation: INSERT_BEFORE
+        value:
+          name: envoy.filters.http.ratelimit
+          typed_config:
+            "@type": type.googleapis.com/envoy.extensions.filters.http.ratelimit.v3.RateLimit
+            domain: ecommerce-ratelimit
+            failure_mode_deny: false
+            rate_limit_service:
+              grpc_service:
+                envoy_grpc:
+                  cluster_name: rate_limit_cluster
+              transport_api_version: V3
+
+---
+# Rate Limit ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ratelimit-config
+  namespace: ecommerce
+data:
+  config.yaml: |
+    domain: ecommerce-ratelimit
+    descriptors:
+      # User별 Rate Limit (초당 100 요청)
+      - key: user_id
+        rate_limit:
+          unit: second
+          requests_per_unit: 100
+      
+      # IP별 Rate Limit (초당 50 요청)
+      - key: remote_address
+        rate_limit:
+          unit: second
+          requests_per_unit: 50
+      
+      # Order Service 전용 (초당 100 요청)
+      - key: header_match
+        value: "/api/v1/orders"
+        rate_limit:
+          unit: second
+          requests_per_unit: 100
+      
+      # Product Service 전용 (초당 200 요청)
+      - key: header_match
+        value: "/api/v1/products"
+        rate_limit:
+          unit: second
+          requests_per_unit: 200
+      
+      # Payment Service 전용 (초당 50 요청, 더 엄격)
+      - key: header_match
+        value: "/api/v1/payments"
+        rate_limit:
+          unit: second
+          requests_per_unit: 50
+
+

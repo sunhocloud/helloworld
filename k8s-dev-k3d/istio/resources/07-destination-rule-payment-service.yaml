@@ -1,0 +1,23 @@
+# Payment Service DestinationRule: Circuit Breaker 및 Resilience 설정
+# 결제 서비스는 더 엄격한 설정 적용
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: payment-service-dr
+  namespace: ecommerce
+spec:
+  host: payment-service.ecommerce.svc.cluster.local
+  trafficPolicy:
+    connectionPool:
+      tcp:
+        maxConnections: 50
+      http:
+        http1MaxPendingRequests: 30
+        http2MaxRequests: 50
+    outlierDetection:
+      consecutive5xxErrors: 3  # 결제 서비스는 더 엄격
+      interval: 10s
+      baseEjectionTime: 60s  # 복구 시간 더 길게
+      maxEjectionPercent: 30
+
+

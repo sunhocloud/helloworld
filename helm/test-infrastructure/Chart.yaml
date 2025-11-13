@@ -1,0 +1,13 @@
+apiVersion: v2
+name: test-infrastructure
+description: Infrastructure for integration tests
+type: application
+version: 1.0.0
+
+dependencies:
+  - name: postgresql
+    version: "1.0.0"
+    repository: "file://../base/postgresql"
+  - name: redis
+    version: "1.0.0"
+    repository: "file://../base/redis"

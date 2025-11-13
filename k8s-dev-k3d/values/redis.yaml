@@ -1,0 +1,135 @@
+# Redis for k3d local environment
+# helm/statefulset-base/redis 차트를 사용하며, k3d 로컬 환경에 최적화된 설정
+
+# Global settings
+global:
+  namespace: msa-quality
+  appName: redis
+  partOf: msa-quality-suite
+
+# Master configuration (k3d 로컬 환경 최적화)
+master:
+  enabled: true
+  replicas: 1
+  image:
+    repository: redis
+    tag: 7-alpine
+    pullPolicy: IfNotPresent
+  
+  # k3d 환경에 맞게 리소스 축소
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "256Mi"
+      cpu: "250m"
+  
+  # k3d 환경에서는 emptyDir 사용
+  storage:
+    useEmptyDir: true
+    emptyDirSizeLimit: 2Gi
+  
+  # nodeSelector 제거 (k3d는 단일 노드)
+  nodeSelector: {}
+  podAntiAffinity:
+    enabled: false
+
+# Slave configuration (k3d 로컬 환경 최적화)
+slave:
+  enabled: true
+  replicas: 1  # k3d에서는 1개만
+  
+  image:
+    repository: redis
+    tag: 7-alpine
+    pullPolicy: IfNotPresent
+  
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "256Mi"
+      cpu: "250m"
+  
+  storage:
+    useEmptyDir: true
+    emptyDirSizeLimit: 1Gi
+  
+  nodeSelector: {}
+  podAntiAffinity:
+    enabled: false
+
+# Config (k3d 환경 최적화)
+config:
+  maxmemory: "256mb"
+  maxmemoryPolicy: "allkeys-lru"
+  appendonly: "yes"
+  appendfsync: "everysec"
+  bind: "0.0.0.0"
+  port: 6379
+  protectedMode: "no"
+  loglevel: "notice"
+
+# Auth (k3d 환경에서는 비활성화)
+auth:
+  enabled: false
+  password: ""
+  existingSecret: ""
+
+# Services
+services:
+  master:
+    enabled: true
+    type: ClusterIP
+    headless: true
+    port: 6379
+  slave:
+    enabled: true
+    type: ClusterIP
+    headless: true
+    port: 6379
+  unified:
+    enabled: true
+    type: ClusterIP
+    port: 6379
+    selector: master
+    sessionAffinity: ClientIP
+  readonly:
+    enabled: true
+    type: ClusterIP
+    port: 6379
+    selector: slave
+    sessionAffinity: None
+
+# Monitoring (k3d 환경에서는 비활성화)
+monitoring:
+  enabled: false
+  exporter:
+    enabled: false
+  serviceMonitor:
+    enabled: false
+  healthCheck:
+    enabled: true  # 헬스체크는 유지
+  backup:
+    enabled: false
+
+# Security context
+securityContext:
+  fsGroup: 999
+  runAsUser: 999
+  runAsGroup: 999
+
+# Health checks
+healthCheck:
+  liveness:
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readiness:
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3

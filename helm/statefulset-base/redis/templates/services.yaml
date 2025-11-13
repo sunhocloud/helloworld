@@ -1,0 +1,125 @@
+{{- if .Values.services.master.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "redis-chart.masterServiceName" . }}
+  namespace: {{ include "redis-chart.namespace" . }}
+  labels:
+    {{- include "redis-chart.masterLabels" . | nindent 4 }}
+  annotations:
+    service.alpha.kubernetes.io/tolerate-unready-endpoints: "true"
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "{{ .Values.config.port }}"
+spec:
+  type: {{ .Values.services.master.type }}
+  {{- if .Values.services.master.headless }}
+  clusterIP: None
+  {{- end }}
+  ports:
+  - name: redis
+    port: {{ .Values.services.master.port }}
+    targetPort: {{ .Values.config.port }}
+    protocol: TCP
+  selector:
+    app: {{ .Values.global.appName }}
+    component: master
+    {{- include "redis-chart.selectorLabels" . | nindent 4 }}
+  sessionAffinity: None
+{{- end }}
+
+{{- if .Values.services.slave.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "redis-chart.slaveServiceName" . }}
+  namespace: {{ include "redis-chart.namespace" . }}
+  labels:
+    {{- include "redis-chart.slaveLabels" . | nindent 4 }}
+  annotations:
+    service.alpha.kubernetes.io/tolerate-unready-endpoints: "true"
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "{{ .Values.config.port }}"
+spec:
+  type: {{ .Values.services.slave.type }}
+  {{- if .Values.services.slave.headless }}
+  clusterIP: None
+  {{- end }}
+  ports:
+  - name: redis
+    port: {{ .Values.services.slave.port }}
+    targetPort: {{ .Values.config.port }}
+    protocol: TCP
+  selector:
+    app: {{ .Values.global.appName }}
+    component: slave
+    {{- include "redis-chart.selectorLabels" . | nindent 4 }}
+  sessionAffinity: None
+{{- end }}
+
+{{- if .Values.services.unified.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "redis-chart.fullname" . }}-service
+  namespace: {{ include "redis-chart.namespace" . }}
+  labels:
+    {{- include "redis-chart.labels" . | nindent 4 }}
+    app: {{ .Values.global.appName }}
+    component: unified
+    app.kubernetes.io/component: unified
+  annotations:
+    service.description: "Unified Redis service for backward compatibility"
+    service.usage: "Use {{ include "redis-chart.masterServiceName" . }} for writes, {{ include "redis-chart.slaveServiceName" . }} for reads"
+spec:
+  type: {{ .Values.services.unified.type }}
+  ports:
+  - name: redis
+    port: {{ .Values.services.unified.port }}
+    targetPort: {{ .Values.config.port }}
+    protocol: TCP
+  selector:
+    app: {{ .Values.global.appName }}
+    {{- if eq .Values.services.unified.selector "master" }}
+    component: master
+    {{- else }}
+    component: slave
+    {{- end }}
+    {{- include "redis-chart.selectorLabels" . | nindent 4 }}
+  {{- if .Values.services.unified.sessionAffinity }}
+  sessionAffinity: {{ .Values.services.unified.sessionAffinity }}
+  {{- end }}
+{{- end }}
+
+{{- if .Values.services.readonly.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "redis-chart.fullname" . }}-readonly
+  namespace: {{ include "redis-chart.namespace" . }}
+  labels:
+    {{- include "redis-chart.labels" . | nindent 4 }}
+    app: {{ .Values.global.appName }}
+    component: readonly
+    app.kubernetes.io/component: readonly
+  annotations:
+    service.description: "Read-only Redis service for load balancing across slaves"
+spec:
+  type: {{ .Values.services.readonly.type }}
+  ports:
+  - name: redis
+    port: {{ .Values.services.readonly.port }}
+    targetPort: {{ .Values.config.port }}
+    protocol: TCP
+  selector:
+    app: {{ .Values.global.appName }}
+    component: slave
+    {{- include "redis-chart.selectorLabels" . | nindent 4 }}
+  {{- if .Values.services.readonly.sessionAffinity }}
+  sessionAffinity: {{ .Values.services.readonly.sessionAffinity }}
+  {{- end }}
+{{- end }}
+

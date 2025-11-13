@@ -1,0 +1,90 @@
+# AuthorizationPolicy: JWT 기반 접근 제어
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: require-jwt
+  namespace: ecommerce
+spec:
+  selector:
+    matchLabels:
+      istio.io/gateway-name: ecommerce-gateway
+  action: ALLOW
+  rules:
+    # Public endpoints (인증 불필요)
+    - to:
+        - operation:
+            paths:
+              - /api/v1/users/register
+              - /api/v1/users/login
+              - /api/v1/users/refresh-token
+              - /api/v1/auth/login
+              - /api/v1/auth/refresh
+              - /actuator/health
+              - /actuator/prometheus
+    
+    # Authenticated endpoints (JWT 필수)
+    - from:
+        - source:
+            requestPrincipals: ["*"]
+      to:
+        - operation:
+            paths:
+              - /api/v1/*
+
+---
+# Webhook Gateway IP Whitelist 정책
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: webhook-ip-whitelist
+  namespace: ecommerce
+spec:
+  selector:
+    matchLabels:
+      istio.io/gateway-name: webhook-gateway
+  action: ALLOW
+  rules:
+    # PG사 IP만 허용 (Payment Webhook)
+    - from:
+        - source:
+            ipBlocks:
+              - "203.0.113.0/24"  # PG사 IP 대역 (실제 IP로 변경 필요)
+              - "198.51.100.5/32"  # PG사 Backup IP (실제 IP로 변경 필요)
+      to:
+        - operation:
+            paths:
+              - /webhooks/payment/*
+            methods:
+              - POST
+    
+    # 파트너사 IP만 허용 (Order Webhook)
+    - from:
+        - source:
+            ipBlocks:
+              - "198.51.100.0/24"  # 파트너사 IP 대역 (실제 IP로 변경 필요)
+      to:
+        - operation:
+            paths:
+              - /webhooks/order/*
+            methods:
+              - POST
+
+---
+# Webhook Gateway 기본 DENY 정책
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: webhook-default-deny
+  namespace: ecommerce
+spec:
+  selector:
+    matchLabels:
+      istio.io/gateway-name: webhook-gateway
+  action: DENY
+  rules:
+    - to:
+        - operation:
+            paths:
+              - /webhooks/*
+
+

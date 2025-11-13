@@ -1,0 +1,14 @@
+# Istio 관련 임시 파일
+*.tmp
+*.bak
+*.swp
+*~
+
+# Istio 설치 파일 (다운로드된 경우)
+istio-*/
+
+# 로컬 설정 파일
+.local
+.env
+
+

@@ -1,0 +1,17 @@
+apiVersion: v2
+name: customer-service
+description: Customer Service Microservice
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+
+dependencies:
+  - name: postgresql
+    version: "1.0.0"
+    repository: "file://../../statefulset-base/postgresql"
+    condition: postgresql.enabled
+  - name: redis-base
+    alias: redis
+    version: "1.0.0"
+    repository: "file://../../statefulset-base/redis"
+    condition: redis.enabled

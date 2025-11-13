@@ -1,0 +1,291 @@
+{{- if and .Values.monitoring.enabled .Values.monitoring.exporter.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "redis-chart.fullname" . }}-exporter
+  namespace: {{ include "redis-chart.namespace" . }}
+  labels:
+    {{- include "redis-chart.labels" . | nindent 4 }}
+    app: redis-exporter
+    app.kubernetes.io/name: redis-exporter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis-exporter
+      {{- include "redis-chart.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        app: redis-exporter
+        {{- include "redis-chart.selectorLabels" . | nindent 8 }}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "{{ .Values.monitoring.exporter.port }}"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+      - name: redis-exporter
+        image: "{{ .Values.monitoring.exporter.image.repository }}:{{ .Values.monitoring.exporter.image.tag }}"
+        imagePullPolicy: {{ .Values.monitoring.exporter.image.pullPolicy }}
+        ports:
+        - name: metrics
+          containerPort: {{ .Values.monitoring.exporter.port }}
+          protocol: TCP
+        env:
+        - name: REDIS_ADDR
+          value: "redis://{{ include "redis-chart.fullname" . }}-service.{{ include "redis-chart.namespace" . }}.svc.cluster.local:{{ .Values.config.port }}"
+        {{- if .Values.auth.enabled }}
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "redis-chart.secretName" . }}
+              key: redis-password
+        {{- end }}
+        - name: REDIS_EXPORTER_LOG_FORMAT
+          value: "json"
+        - name: REDIS_EXPORTER_DEBUG
+          value: "false"
+        resources:
+          {{- toYaml .Values.monitoring.exporter.resources | nindent 10 }}
+        livenessProbe:
+          httpGet:
+            path: /metrics
+            port: {{ .Values.monitoring.exporter.port }}
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /metrics
+            port: {{ .Values.monitoring.exporter.port }}
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "redis-chart.fullname" . }}-exporter
+  namespace: {{ include "redis-chart.namespace" . }}
+  labels:
+    {{- include "redis-chart.labels" . | nindent 4 }}
+    app: redis-exporter
+    app.kubernetes.io/name: redis-exporter
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "{{ .Values.monitoring.exporter.port }}"
+    prometheus.io/path: "/metrics"
+spec:
+  type: ClusterIP
+  ports:
+  - name: metrics
+    port: {{ .Values.monitoring.exporter.port }}
+    targetPort: {{ .Values.monitoring.exporter.port }}
+    protocol: TCP
+  selector:
+    app: redis-exporter
+    {{- include "redis-chart.selectorLabels" . | nindent 4 }}
+{{- end }}
+
+{{- if and .Values.monitoring.enabled .Values.monitoring.serviceMonitor.enabled }}
+{{- if .Capabilities.APIVersions.Has "monitoring.coreos.com/v1" }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "redis-chart.fullname" . }}-monitor
+  namespace: {{ include "redis-chart.namespace" . }}
+  labels:
+    {{- include "redis-chart.labels" . | nindent 4 }}
+    app: {{ .Values.global.appName }}
+    monitoring: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: redis-exporter
+      {{- include "redis-chart.selectorLabels" . | nindent 6 }}
+  endpoints:
+  - port: metrics
+    interval: {{ .Values.monitoring.serviceMonitor.interval }}
+    path: /metrics
+    scrapeTimeout: {{ .Values.monitoring.serviceMonitor.scrapeTimeout }}
+  namespaceSelector:
+    matchNames:
+    - {{ include "redis-chart.namespace" . }}
+{{- end }}
+{{- end }}
+
+{{- if and .Values.monitoring.enabled .Values.monitoring.healthCheck.enabled }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "redis-chart.fullname" . }}-health-check
+  namespace: {{ include "redis-chart.namespace" . }}
+  labels:
+    {{- include "redis-chart.labels" . | nindent 4 }}
+    app: {{ .Values.global.appName }}
+    component: health-check
+    app.kubernetes.io/component: health-check
+spec:
+  schedule: {{ .Values.monitoring.healthCheck.schedule | quote }}
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: {{ .Values.global.appName }}
+            component: health-check
+            {{- include "redis-chart.selectorLabels" . | nindent 12 }}
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: redis-health-check
+            image: "{{ .Values.master.image.repository }}:{{ .Values.master.image.tag }}"
+            imagePullPolicy: {{ .Values.master.image.pullPolicy }}
+            command:
+            - /bin/sh
+            - -c
+            - |
+              echo "🔍 Redis 헬스체크 시작..."
+              
+              # Master 헬스체크
+              echo "📊 Master 상태 확인..."
+              MASTER_STATUS=$(redis-cli -h {{ include "redis-chart.masterFQDN" . }} -p {{ .Values.config.port }}{{ if .Values.auth.enabled }} -a $REDIS_PASSWORD{{ end }} ping)
+              if [ "$MASTER_STATUS" = "PONG" ]; then
+                echo "✅ Master 정상"
+              else
+                echo "❌ Master 비정상: $MASTER_STATUS"
+                exit 1
+              fi
+              
+              # Slave 헬스체크
+              echo "📊 Slave 상태 확인..."
+              {{- range $i := until (int .Values.slave.replicas) }}
+              SLAVE_STATUS=$(redis-cli -h {{ include "redis-chart.fullname" $ }}-slave-{{ $i }}.{{ include "redis-chart.slaveServiceName" $ }}.{{ include "redis-chart.namespace" $ }}.svc.cluster.local -p {{ $.Values.config.port }}{{ if $.Values.auth.enabled }} -a $REDIS_PASSWORD{{ end }} ping)
+              if [ "$SLAVE_STATUS" = "PONG" ]; then
+                echo "✅ Slave-{{ $i }} 정상"
+              else
+                echo "❌ Slave-{{ $i }} 비정상: $SLAVE_STATUS"
+              fi
+              {{- end }}
+              
+              # 복제 상태 확인
+              echo "📊 복제 상태 확인..."
+              REPLICATION_INFO=$(redis-cli -h {{ include "redis-chart.masterFQDN" . }} -p {{ .Values.config.port }}{{ if .Values.auth.enabled }} -a $REDIS_PASSWORD{{ end }} info replication)
+              echo "$REPLICATION_INFO"
+              
+              # 메모리 사용량 확인
+              echo "📊 메모리 사용량 확인..."
+              MEMORY_INFO=$(redis-cli -h {{ include "redis-chart.masterFQDN" . }} -p {{ .Values.config.port }}{{ if .Values.auth.enabled }} -a $REDIS_PASSWORD{{ end }} info memory | grep used_memory_human)
+              echo "$MEMORY_INFO"
+              
+              echo "✅ Redis 헬스체크 완료"
+            env:
+            {{- if .Values.auth.enabled }}
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "redis-chart.secretName" . }}
+                  key: redis-password
+            {{- end }}
+            resources:
+              requests:
+                memory: "32Mi"
+                cpu: "50m"
+              limits:
+                memory: "64Mi"
+                cpu: "100m"
+{{- end }}
+
+{{- if and .Values.monitoring.enabled .Values.monitoring.backup.enabled }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "redis-chart.fullname" . }}-backup
+  namespace: {{ include "redis-chart.namespace" . }}
+  labels:
+    {{- include "redis-chart.labels" . | nindent 4 }}
+    app: {{ .Values.global.appName }}
+    component: backup
+    app.kubernetes.io/component: backup
+spec:
+  schedule: {{ .Values.monitoring.backup.schedule | quote }}
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: {{ .Values.global.appName }}
+            component: backup
+            {{- include "redis-chart.selectorLabels" . | nindent 12 }}
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: redis-backup
+            image: "{{ .Values.master.image.repository }}:{{ .Values.master.image.tag }}"
+            imagePullPolicy: {{ .Values.master.image.pullPolicy }}
+            command:
+            - /bin/sh
+            - /scripts/backup.sh
+            env:
+            {{- if .Values.auth.enabled }}
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "redis-chart.secretName" . }}
+                  key: redis-password
+            {{- end }}
+            volumeMounts:
+            - name: redis-scripts
+              mountPath: /scripts
+            - name: backup-storage
+              mountPath: /backup
+            resources:
+              requests:
+                memory: "64Mi"
+                cpu: "100m"
+              limits:
+                memory: "128Mi"
+                cpu: "200m"
+          volumes:
+          - name: redis-scripts
+            configMap:
+              name: {{ include "redis-chart.scriptsConfigMapName" . }}
+              defaultMode: 0755
+          - name: backup-storage
+            {{- if .Values.monitoring.backup.pvc.enabled }}
+            persistentVolumeClaim:
+              claimName: {{ include "redis-chart.fullname" . }}-backup-pvc
+            {{- else }}
+            emptyDir: {}
+            {{- end }}
+
+{{- if .Values.monitoring.backup.pvc.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "redis-chart.fullname" . }}-backup-pvc
+  namespace: {{ include "redis-chart.namespace" . }}
+  labels:
+    {{- include "redis-chart.labels" . | nindent 4 }}
+    app: {{ .Values.global.appName }}
+    component: backup
+    app.kubernetes.io/component: backup
+spec:
+  accessModes:
+  - ReadWriteOnce
+  storageClassName: {{ .Values.monitoring.backup.pvc.storageClassName }}
+  resources:
+    requests:
+      storage: {{ .Values.monitoring.backup.pvc.size }}
+{{- end }}
+{{- end }}
+

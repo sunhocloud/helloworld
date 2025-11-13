@@ -1,0 +1,196 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "redis-chart.configMapName" . }}
+  namespace: {{ include "redis-chart.namespace" . }}
+  labels:
+    {{- include "redis-chart.labels" . | nindent 4 }}
+    app: {{ .Values.global.appName }}
+    component: config
+    app.kubernetes.io/component: config
+data:
+  # Redis Master 설정
+  redis-master.conf: |
+    # 네트워크 설정
+    bind {{ .Values.config.bind }}
+    port {{ .Values.config.port }}
+    protected-mode {{ .Values.config.protectedMode }}
+    
+    # 메모리 설정
+    maxmemory {{ .Values.config.maxmemory }}
+    maxmemory-policy {{ .Values.config.maxmemoryPolicy }}
+    
+    # 지속성 설정 (Master는 AOF 사용)
+    appendonly {{ .Values.config.appendonly }}
+    appendfsync {{ .Values.config.appendfsync }}
+    auto-aof-rewrite-percentage {{ .Values.config.autoAofRewritePercentage }}
+    auto-aof-rewrite-min-size {{ .Values.config.autoAofRewriteMinSize }}
+    
+    # RDB 백업 설정
+{{- range .Values.config.save }}
+    save {{ . }}
+{{- end }}
+    
+    # 로그 설정
+    loglevel {{ .Values.config.loglevel }}
+    
+    # 클라이언트 설정
+    tcp-keepalive {{ .Values.config.tcpKeepalive }}
+    timeout {{ .Values.config.timeout }}
+    
+    # 복제 설정
+    replica-serve-stale-data yes
+    replica-read-only yes
+    
+    # 보안 설정은 Secret에서 주입
+
+  # Redis Slave 설정
+  redis-slave.conf: |
+    # 네트워크 설정
+    bind {{ .Values.config.bind }}
+    port {{ .Values.config.port }}
+    protected-mode {{ .Values.config.protectedMode }}
+    
+    # 메모리 설정
+    maxmemory {{ .Values.config.maxmemory }}
+    maxmemory-policy {{ .Values.config.maxmemoryPolicy }}
+    
+    # 지속성 설정 (Slave는 AOF 비활성화로 성능 최적화)
+    appendonly no
+    
+    # RDB 백업 설정 (Slave는 백업 주기 길게)
+    save 1800 1
+    save 600 10
+    save 300 100
+    
+    # 로그 설정
+    loglevel {{ .Values.config.loglevel }}
+    
+    # 클라이언트 설정
+    tcp-keepalive {{ .Values.config.tcpKeepalive }}
+    timeout {{ .Values.config.timeout }}
+    
+    # 복제 설정
+    replica-serve-stale-data yes
+    replica-read-only yes
+    replica-priority 100
+    
+    # Master 연결 설정은 init-slave.sh에서 처리
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "redis-chart.scriptsConfigMapName" . }}
+  namespace: {{ include "redis-chart.namespace" . }}
+  labels:
+    {{- include "redis-chart.labels" . | nindent 4 }}
+    app: {{ .Values.global.appName }}
+    component: scripts
+    app.kubernetes.io/component: scripts
+data:
+  # Master 초기화 스크립트
+  init-master.sh: |
+    #!/bin/bash
+    set -e
+    
+    echo "🚀 Redis Master 초기화 시작..."
+    
+    # 설정 파일 복사
+    cp /config/redis-master.conf /data/redis.conf
+    
+    # 비밀번호 설정 (Secret에서 주입)
+    if [ ! -z "$REDIS_PASSWORD" ]; then
+        echo "requirepass $REDIS_PASSWORD" >> /data/redis.conf
+        echo "masterauth $REDIS_PASSWORD" >> /data/redis.conf
+    fi
+    
+    echo "✅ Redis Master 초기화 완료"
+    
+    # Redis 서버 시작
+    exec redis-server /data/redis.conf
+
+  # Slave 초기화 스크립트
+  init-slave.sh: |
+    #!/bin/bash
+    set -e
+    
+    echo "🚀 Redis Slave 초기화 시작..."
+    
+    # 설정 파일 복사
+    cp /config/redis-slave.conf /data/redis.conf
+    
+    # Master 연결 설정
+    MASTER_HOST="{{ include "redis-chart.masterFQDN" . }}"
+    echo "replicaof $MASTER_HOST {{ .Values.config.port }}" >> /data/redis.conf
+    
+    # 비밀번호 설정 (Secret에서 주입)
+    if [ ! -z "$REDIS_PASSWORD" ]; then
+        echo "requirepass $REDIS_PASSWORD" >> /data/redis.conf
+        echo "masterauth $REDIS_PASSWORD" >> /data/redis.conf
+    fi
+    
+    echo "✅ Redis Slave 초기화 완료"
+    
+    # Master 연결 대기
+    echo "⏳ Master 연결 대기 중..."
+    until redis-cli -h $MASTER_HOST -p {{ .Values.config.port }}{{ if .Values.auth.enabled }} -a $REDIS_PASSWORD{{ end }} ping; do
+        echo "Master 연결 대기 중... (5초 후 재시도)"
+        sleep 5
+    done
+    
+    echo "✅ Master 연결 확인됨"
+    
+    # Redis 서버 시작
+    exec redis-server /data/redis.conf
+
+  # 헬스체크 스크립트
+  health-check.sh: |
+    #!/bin/bash
+    
+    # Redis 연결 테스트
+    if [ ! -z "$REDIS_PASSWORD" ]; then
+        redis-cli -a "$REDIS_PASSWORD" ping
+    else
+        redis-cli ping
+    fi
+
+  # 백업 스크립트
+  backup.sh: |
+    #!/bin/bash
+    set -e
+    
+    BACKUP_DIR="/backup"
+    TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+    
+    echo "🔄 Redis 백업 시작: $TIMESTAMP"
+    
+    # 백업 디렉토리 생성
+    mkdir -p $BACKUP_DIR
+    
+    # RDB 백업
+    if [ ! -z "$REDIS_PASSWORD" ]; then
+        redis-cli -a "$REDIS_PASSWORD" BGSAVE
+    else
+        redis-cli BGSAVE
+    fi
+    
+    # 백업 완료 대기
+    while [ $(redis-cli -a "$REDIS_PASSWORD" LASTSAVE) -eq $(redis-cli -a "$REDIS_PASSWORD" LASTSAVE) ]; do
+        sleep 1
+    done
+    
+    # 백업 파일 복사
+    cp /data/dump.rdb $BACKUP_DIR/dump_$TIMESTAMP.rdb
+    
+    # AOF 백업 (존재하는 경우)
+    if [ -f /data/appendonly.aof ]; then
+        cp /data/appendonly.aof $BACKUP_DIR/appendonly_$TIMESTAMP.aof
+    fi
+    
+    echo "✅ Redis 백업 완료: $BACKUP_DIR"
+    
+    # 오래된 백업 파일 정리 (7일 이상)
+    find $BACKUP_DIR -name "*.rdb" -mtime +7 -delete
+    find $BACKUP_DIR -name "*.aof" -mtime +7 -delete
+

@@ -1,0 +1,141 @@
+{{- if .Values.master.enabled }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "redis-chart.fullname" . }}-master
+  namespace: {{ include "redis-chart.namespace" . }}
+  labels:
+    {{- include "redis-chart.masterLabels" . | nindent 4 }}
+spec:
+  serviceName: {{ include "redis-chart.masterServiceName" . }}
+  replicas: {{ .Values.master.replicas }}
+  selector:
+    matchLabels:
+      app: {{ .Values.global.appName }}
+      component: master
+      {{- include "redis-chart.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "redis-chart.masterLabels" . | nindent 8 }}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "{{ .Values.config.port }}"
+        prometheus.io/path: "/metrics"
+    spec:
+      securityContext:
+        fsGroup: {{ .Values.securityContext.fsGroup }}
+        runAsUser: {{ .Values.securityContext.runAsUser }}
+        runAsGroup: {{ .Values.securityContext.runAsGroup }}
+        fsGroupChangePolicy: {{ .Values.securityContext.fsGroupChangePolicy }}
+      containers:
+      - name: redis-master
+        image: "{{ .Values.master.image.repository }}:{{ .Values.master.image.tag }}"
+        imagePullPolicy: {{ .Values.master.image.pullPolicy }}
+        command:
+        - /bin/sh
+        - /scripts/init-master.sh
+        ports:
+        - name: redis
+          containerPort: {{ .Values.config.port }}
+          protocol: TCP
+        env:
+        {{- if .Values.auth.enabled }}
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "redis-chart.secretName" . }}
+              key: redis-password
+        {{- end }}
+        - name: REDIS_ROLE
+          value: "master"
+        resources:
+          {{- toYaml .Values.master.resources | nindent 10 }}
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - /scripts/health-check.sh
+          {{- toYaml .Values.healthCheck.liveness | nindent 10 }}
+        readinessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - /scripts/health-check.sh
+          {{- toYaml .Values.healthCheck.readiness | nindent 10 }}
+        volumeMounts:
+        - name: redis-data
+          mountPath: /data
+        - name: redis-config
+          mountPath: /config
+          readOnly: true
+        - name: redis-scripts
+          mountPath: /scripts
+        {{- if .Values.monitoring.backup.enabled }}
+        - name: backup-storage
+          mountPath: /backup
+        {{- end }}
+      volumes:
+      - name: redis-data
+        {{- if .Values.master.storage.useEmptyDir }}
+        emptyDir:
+          sizeLimit: {{ .Values.master.storage.emptyDirSizeLimit }}
+        {{- else }}
+        persistentVolumeClaim:
+          claimName: {{ include "redis-chart.fullname" . }}-master-data
+        {{- end }}
+      - name: redis-config
+        configMap:
+          name: {{ include "redis-chart.configMapName" . }}
+          defaultMode: 0644
+      - name: redis-scripts
+        configMap:
+          name: {{ include "redis-chart.scriptsConfigMapName" . }}
+          defaultMode: 0755
+      {{- if .Values.monitoring.backup.enabled }}
+      - name: backup-storage
+        emptyDir: {}
+      {{- end }}
+      restartPolicy: Always
+      {{- if .Values.master.nodeSelector }}
+      nodeSelector:
+        {{- toYaml .Values.master.nodeSelector | nindent 8 }}
+      {{- end }}
+      {{- if .Values.master.podAntiAffinity.enabled }}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: {{ .Values.master.podAntiAffinity.weight }}
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - {{ .Values.global.appName }}
+              topologyKey: kubernetes.io/hostname
+      {{- end }}
+  {{- if not .Values.master.storage.useEmptyDir }}
+  volumeClaimTemplates:
+  - metadata:
+      name: redis-data
+      labels:
+        {{- include "redis-chart.selectorLabels" . | nindent 8 }}
+        app: {{ .Values.global.appName }}
+        component: master
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      storageClassName: {{ .Values.master.storage.storageClassName }}
+      resources:
+        requests:
+          storage: {{ .Values.master.storage.size }}
+  {{- end }}
+  updateStrategy:
+    type: {{ .Values.updateStrategy.type }}
+    {{- if .Values.updateStrategy.rollingUpdate }}
+    rollingUpdate:
+      {{- toYaml .Values.updateStrategy.rollingUpdate | nindent 6 }}
+    {{- end }}
+{{- end }}
+

@@ -1,0 +1,111 @@
+# airflow-base 기본 값
+# Apache Airflow 공식 Helm Chart (alias: airflow)를 래핑하여 공통 옵션을 정의합니다.
+
+airflow:
+  defaultAirflowRepository: apache/airflow
+  defaultAirflowTag: "2.9.0"
+  defaultAirflowImagePullPolicy: IfNotPresent
+
+  executor: CeleryExecutor
+
+  postgresql:
+    enabled: true
+    auth:
+      username: airflow
+      password: airflow
+      database: airflow
+    persistence:
+      enabled: true
+      size: 20Gi
+      storageClassName: gp2-immediate
+    primary:
+      resources:
+        requests:
+          memory: "512Mi"
+          cpu: "500m"
+        limits:
+          memory: "1Gi"
+          cpu: "1000m"
+
+  redis:
+    enabled: true
+    persistence:
+      storageClassName: gp2-immediate
+
+  dags:
+    persistence:
+      enabled: true
+      size: 5Gi
+      storageClassName: gp2-immediate
+    gitSync:
+      enabled: false
+
+  logs:
+    persistence:
+      enabled: false
+
+  webserver:
+    replicas: 1
+    service:
+      type: ClusterIP
+    resources:
+      requests:
+        memory: "512Mi"
+        cpu: "500m"
+      limits:
+        memory: "1Gi"
+        cpu: "1000m"
+
+  scheduler:
+    replicas: 1
+    resources:
+      requests:
+        memory: "512Mi"
+        cpu: "500m"
+      limits:
+        memory: "1Gi"
+        cpu: "1000m"
+
+  workers:
+    replicas: 2
+    resources:
+      requests:
+        memory: "512Mi"
+        cpu: "500m"
+      limits:
+        memory: "1Gi"
+        cpu: "1000m"
+
+  flower:
+    enabled: false
+
+  triggerer:
+    enabled: false
+
+  env:
+    - name: AIRFLOW__CORE__EXECUTOR
+      value: CeleryExecutor
+    - name: AIRFLOW__CORE__LOAD_EXAMPLES
+      value: "false"
+    - name: AIRFLOW__WEBSERVER__EXPOSE_CONFIG
+      value: "true"
+    - name: AIRFLOW__CORE__PARALLELISM
+      value: "32"
+    - name: AIRFLOW__CORE__DAG_CONCURRENCY
+      value: "16"
+    - name: AIRFLOW__CORE__MAX_ACTIVE_TASKS_PER_DAG
+      value: "16"
+    - name: AIRFLOW__LOGGING__LOGGING_LEVEL
+      value: INFO
+    - name: AIRFLOW__API__AUTH_BACKENDS
+      value: airflow.api.auth.backend.basic_auth
+
+  serviceAccount:
+    create: true
+    name: ""
+
+  persistence:
+    enabled: false
+
+  ingress:
+    enabled: false

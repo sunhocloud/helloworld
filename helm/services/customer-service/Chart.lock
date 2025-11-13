@@ -1,0 +1,9 @@
+dependencies:
+- name: postgresql
+  repository: file://../../statefulset-base/postgresql
+  version: 1.0.0
+- name: redis-base
+  repository: file://../../statefulset-base/redis
+  version: 1.0.0
+digest: sha256:f6a600cba2108c01dd9278ada35fadfc58e0ba735f329eb8b5b186a0b6d63d44
+generated: "2025-11-11T15:49:23.926611+09:00"

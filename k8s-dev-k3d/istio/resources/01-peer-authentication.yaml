@@ -1,0 +1,12 @@
+# PeerAuthentication: Namespace 레벨 mTLS 강제
+# 모든 서비스 간 통신에 mTLS 필수
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: ecommerce
+spec:
+  mtls:
+    mode: STRICT  # 모든 서비스 간 통신에 mTLS 필수
+
+
