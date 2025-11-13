@@ -23,7 +23,42 @@ c4ang-infra/
         └── IntegrationTest.kt              # 통합 테스트 어노테이션
 ```
 
-## 🚀 사용 방법
+## 🚀 빠른 시작 (Makefile 사용)
+
+### Makefile로 간편하게 로컬 환경 구축
+
+```bash
+# 1. 모든 명령어 확인
+make help
+
+# 2. 로컬 k3d 환경 한 번에 시작 (도구 설치 + 클러스터 생성 + Helm 배포)
+make local-up
+
+# 3. KUBECONFIG 설정
+export KUBECONFIG=$(pwd)/k8s-dev-k3d/kubeconfig/config
+
+# 4. 상태 확인
+make local-status
+
+# 5. 환경 중지
+make local-down
+
+# 6. 환경 완전 제거
+make local-clean
+```
+
+**주요 Makefile 명령어:**
+- `make local-up` - 로컬 환경 완전 시작
+- `make local-status` - 현재 상태 확인
+- `make local-down` - 환경 중지
+- `make local-clean` - 환경 완전 제거
+- `make istio-install` - Istio 설치
+- `make version` - 설치된 도구 버전 확인
+- `make help` - 모든 명령어 보기
+
+---
+
+## 📚 사용 방법 (상세)
 
 ### 1. 서브모듈로 추가
 
