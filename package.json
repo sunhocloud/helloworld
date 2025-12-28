@@ -1,0 +1,21 @@
+{
+  "name": "helloworld",
+  "version": "1.0.0",
+  "description": "",
+  "main": "helloworld.js",
+  "scripts": {
+    "test": "node_modules/mocha/bin/mocha"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "jsdom": "^26.1.0",
+    "mocha": "^2.5.3",
+    "supertest": "^7.1.1"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "vm2": "^3.9.19"
+  }
+}
